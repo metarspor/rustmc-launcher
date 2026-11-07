@@ -70,6 +70,9 @@ pub struct LauncherConfig {
     /// AI 助手：模型名（如 deepseek-chat、doubao-pro-32k、gpt-4o-mini）。
     #[serde(default = "default_ai_model")]
     pub ai_model: String,
+    /// 低配机优化：开启后自动压低内存、附加 GC 调优参数、锁 30 帧。
+    #[serde(default)]
+    pub low_spec_mode: bool,
 }
 
 fn default_ai_base() -> String {
@@ -114,6 +117,7 @@ impl Default for LauncherConfig {
             ai_api_base: default_ai_base(),
             ai_api_key: String::new(),
             ai_model: default_ai_model(),
+            low_spec_mode: false,
         }
     }
 }

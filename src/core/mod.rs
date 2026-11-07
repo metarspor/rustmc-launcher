@@ -12,3 +12,4 @@ pub mod content;
 pub mod paths;
 pub mod rules;
 pub mod ai;
+pub mod auto;

@@ -183,3 +183,131 @@ fn which(exe: &str) -> Option<PathBuf> {
     }
     None
 }
+
+/* -------------------- 自动下载便携 JRE（Adoptium Temurin） -------------------- */
+
+/// 操作系统标识（Adoptium API 用）。
+fn adoptium_os() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "mac"
+    } else {
+        "linux"
+    }
+}
+
+/// CPU 架构标识（Adoptium API 用）。
+fn adoptium_arch() -> &'static str {
+    if cfg!(target_arch = "x86_64") {
+        "x64"
+    } else if cfg!(target_arch = "aarch64") {
+        "aarch64"
+    } else if cfg!(target_arch = "arm") {
+        "arm"
+    } else {
+        "x64"
+    }
+}
+
+/// 下载并解压 Temurin JRE 到 `<base>/runtime/`，返回 java 可执行路径。
+///
+/// `feature_version` 是 Java 主版本号（8 / 17 / 21）。
+/// 已下载过则直接复用，不重复下载。
+pub async fn download_jre(
+    client: &reqwest::Client,
+    base_dir: &Path,
+    feature_version: u32,
+) -> Result<PathBuf> {
+    let runtime_dir = base_dir.join("runtime");
+    std::fs::create_dir_all(&runtime_dir)?;
+
+    // 先看看 runtime/ 下有没有已经下好的对应版本
+    if let Ok(entries) = std::fs::read_dir(&runtime_dir) {
+        for e in entries.flatten() {
+            let candidate = e.path().join("bin").join(java_exe_name());
+            if candidate.exists() {
+                if let Ok(info) = probe(&candidate) {
+                    if info.major == feature_version {
+                        return Ok(candidate);
+                    }
+                }
+            }
+            // macOS bundle 结构
+            #[cfg(target_os = "macos")]
+            {
+                let mac = e
+                    .path()
+                    .join("Contents")
+                    .join("Home")
+                    .join("bin")
+                    .join(java_exe_name());
+                if mac.exists() {
+                    if let Ok(info) = probe(&mac) {
+                        if info.major == feature_version {
+                            return Ok(mac);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let url = format!(
+        "https://api.adoptium.net/v3/binary/latest/{ver}/ga/{os}/{arch}/jre/hotspot/normal/eclipse",
+        ver = feature_version,
+        os = adoptium_os(),
+        arch = adoptium_arch(),
+    );
+    eprintln!("[java] 下载 Temurin JRE {}: {}", feature_version, url);
+
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .with_context(|| format!("请求 Adoptium 失败：{url}"))?
+        .error_for_status()?;
+    let bytes = resp.bytes().await?;
+
+    let archive_path = runtime_dir.join(format!("jre-{}.tar.gz", feature_version));
+    #[cfg(target_os = "windows")]
+    let archive_path = runtime_dir.join(format!("jre-{}.zip", feature_version));
+    std::fs::write(&archive_path, &bytes)?;
+
+    // 解压
+    #[cfg(target_os = "windows")]
+    {
+        let file = std::fs::File::open(&archive_path)?;
+        let mut zip = zip::ZipArchive::new(file)?;
+        zip.extract(&runtime_dir)?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        // tar.gz
+        let file = std::fs::File::open(&archive_path)?;
+        let gz = flate2::read::GzDecoder::new(file);
+        let mut tar = tar::Archive::new(gz);
+        tar.unpack(&runtime_dir)?;
+    }
+
+    // 删除压缩包
+    let _ = std::fs::remove_file(&archive_path);
+
+    // 找刚解压出来的 java
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    if let Ok(entries) = std::fs::read_dir(&runtime_dir) {
+        for e in entries.flatten() {
+            let candidate = e.path().join("bin").join(java_exe_name());
+            if candidate.exists() {
+                #[cfg(not(target_os = "windows"))]
+                {
+                    let _ = std::process::Command::new("chmod")
+                        .args(["+x", &candidate.to_string_lossy()])
+                        .status();
+                }
+                return Ok(candidate);
+            }
+        }
+    }
+    bail!("JRE 解压后找不到 java 可执行文件")
+}

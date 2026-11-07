@@ -24,3 +24,5 @@ thiserror = "2.0.21"
 tokio = { version = "1.54.1", features = ["full"] }
 tokio-util = { version = "0.7.20", features = ["io"] }
 zip = { version = "9.1.0", default-features = false, features = ["deflate"] }
+tar = "0.4"
+flate2 = "1.0"

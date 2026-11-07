@@ -957,12 +957,25 @@ impl GuiApp {
 
         self.game_running = true;
         self._rt.spawn(async move {
+            // 低配模式：自动按系统内存建议分配 + 附加 GC 调优和锁帧参数
+            let (min_mem, max_mem) = if cfg.low_spec_mode {
+                let total = rustmc_launcher::core::auto::total_memory_mb().unwrap_or(4096);
+                rustmc_launcher::core::auto::suggest_memory(total)
+            } else {
+                (cfg.min_memory_mb, cfg.max_memory_mb)
+            };
+            let mut jvm_args = cfg.extra_jvm_args_list();
+            let mut game_args = cfg.extra_game_args_list();
+            if cfg.low_spec_mode {
+                jvm_args.extend(rustmc_launcher::core::auto::low_spec_jvm_args());
+                game_args.extend(rustmc_launcher::core::auto::low_spec_game_args());
+            }
             let opts = launch::LaunchOptions {
                 java: java_path,
-                min_memory_mb: cfg.min_memory_mb,
-                max_memory_mb: cfg.max_memory_mb,
-                extra_jvm_args: cfg.extra_jvm_args_list(),
-                extra_game_args: cfg.extra_game_args_list(),
+                min_memory_mb: min_mem,
+                max_memory_mb: max_mem,
+                extra_jvm_args: jvm_args,
+                extra_game_args: game_args,
                 window_width: cfg.window_width,
                 window_height: cfg.window_height,
                 fullscreen: cfg.fullscreen,
@@ -2623,7 +2636,17 @@ impl GuiApp {
             // 内存
             ui.group(|ui| {
                 ui.add_space(4.0);
-                ui.label(RichText::new("内存设置").strong().size(15.0));
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("内存与性能").strong().size(15.0));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if let Some(total) = rustmc_launcher::core::auto::total_memory_mb() {
+                            ui.label(
+                                RichText::new(format!("系统总内存：{} MB", total))
+                                    .color(Color32::from_gray(140)).small(),
+                            );
+                        }
+                    });
+                });
                 ui.add(
                     Slider::new(&mut self.config.max_memory_mb, 1024..=32768)
                         .step_by(256.0)
@@ -2633,6 +2656,20 @@ impl GuiApp {
                     Slider::new(&mut self.config.min_memory_mb, 256..=8192)
                         .step_by(128.0)
                         .text("最小内存 MB"),
+                );
+                ui.horizontal(|ui| {
+                    if ui.button("✨ 自动推荐内存").clicked() {
+                        if let Some(total) = rustmc_launcher::core::auto::total_memory_mb() {
+                            let (mn, mx) = rustmc_launcher::core::auto::suggest_memory(total);
+                            self.config.min_memory_mb = mn;
+                            self.config.max_memory_mb = mx;
+                        }
+                    }
+                    ui.checkbox(&mut self.config.low_spec_mode, "🪶 低配机优化");
+                });
+                ui.label(
+                    RichText::new("开启低配优化后：自动按总内存分配、附加 GC 调优、锁 30 帧、降负载。适合 4G 内存以下的老机器。")
+                        .color(Color32::from_gray(140)).small(),
                 );
                 ui.add_space(2.0);
             });
@@ -2672,6 +2709,57 @@ impl GuiApp {
                         );
                     }
                 }
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    if ui.button("📥 自动下载 Java 17（推荐）").clicked() && !self.busy {
+                        self.busy = true;
+                        self.status = "正在下载 Temurin JRE 17…".to_string();
+                        let client = self.client.clone();
+                        let base = self.config.resolved_game_dir();
+                        let tx = self.tx.clone();
+                        self._rt.spawn(async move {
+                            match java::download_jre(&client, &base, 17).await {
+                                Ok(p) => {
+                                    let _ = tx.send(GuiEvent::ActionDone(format!(
+                                        "Java 17 已下载到：{}",
+                                        p.display()
+                                    )));
+                                }
+                                Err(e) => {
+                                    let _ = tx.send(GuiEvent::ActionError(format!(
+                                        "下载 Java 失败：{e:#}"
+                                    )));
+                                }
+                            }
+                        });
+                    }
+                    if ui.button("📥 自动下载 Java 21（新版本）").clicked() && !self.busy {
+                        self.busy = true;
+                        self.status = "正在下载 Temurin JRE 21…".to_string();
+                        let client = self.client.clone();
+                        let base = self.config.resolved_game_dir();
+                        let tx = self.tx.clone();
+                        self._rt.spawn(async move {
+                            match java::download_jre(&client, &base, 21).await {
+                                Ok(p) => {
+                                    let _ = tx.send(GuiEvent::ActionDone(format!(
+                                        "Java 21 已下载到：{}",
+                                        p.display()
+                                    )));
+                                }
+                                Err(e) => {
+                                    let _ = tx.send(GuiEvent::ActionError(format!(
+                                        "下载 Java 失败：{e:#}"
+                                    )));
+                                }
+                            }
+                        });
+                    }
+                });
+                ui.label(
+                    RichText::new("没有检测到 Java 时，点上面按钮自动下载便携版到游戏目录，不用手动装。")
+                        .color(Color32::from_gray(140)).small(),
+                );
                 ui.add_space(2.0);
             });
 
