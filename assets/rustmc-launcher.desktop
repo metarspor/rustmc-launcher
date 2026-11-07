@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=RustMC Launcher
+GenericName=Minecraft Launcher
+Comment=RustMC 轻量 Minecraft 启动器
+Exec=./rustmc-launcher
+Icon=rustmc-launcher
+Terminal=false
+Categories=Game;Utility;
+Keywords=minecraft;launcher;rustmc;

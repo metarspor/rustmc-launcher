@@ -1,0 +1,21 @@
+# Rust build artifacts
+target/
+**/*.rs.bk
+
+# Local config & game data
+*.log
+run/
+.rustmc/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local Java / downloads cache
+*.installers/
