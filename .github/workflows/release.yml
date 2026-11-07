@@ -58,9 +58,7 @@ jobs:
       - name: Package (zip)
         if: endsWith(matrix.asset, '.zip')
         shell: powershell
-        run: |
-          cd target/${{ matrix.target }}/release
-          Compress-Archive -Path "${{ matrix.bin }}.exe" -DestinationPath "../../../${{ matrix.asset }}" -Force
+        run: Compress-Archive -Path "target/${{ matrix.target }}/release/${{ matrix.bin }}.exe" -DestinationPath "${{ matrix.asset }}" -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
