@@ -1617,6 +1617,7 @@ impl GuiApp {
                     ScrollArea::vertical()
                         .auto_shrink([false, false])
                         .max_height(ui.available_height() - 90.0)
+                        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
                         .show(ui, |ui| {
                             // —— 已安装分组 ——
                             if !installed_idx.is_empty() {
