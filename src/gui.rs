@@ -1577,6 +1577,8 @@ impl GuiApp {
 impl GuiApp {
     fn ui_play(&mut self, ui: &mut egui::Ui) {
         let installed_color = Color32::from_rgb(86, 200, 130);
+        // 顶层取窗口可用高度，固定给版本列表 ScrollArea，避免 group 内部 available_height 算错
+        let window_h = ui.available_height();
         ui.horizontal(|ui| {
             // 左侧：版本列表（先用 vertical 约束宽度，保证内部为垂直布局）
             ui.vertical(|ui| {
@@ -1613,7 +1615,7 @@ impl GuiApp {
 
                     ScrollArea::vertical()
                         .auto_shrink([false, false])
-                        .max_height(ui.available_height() - 130.0)
+                        .max_height(window_h - 200.0)
                         .show(ui, |ui| {
                             // —— 已安装分组 ——
                             if !installed_idx.is_empty() {
