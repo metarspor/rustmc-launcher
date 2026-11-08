@@ -1736,22 +1736,14 @@ impl GuiApp {
                                 .color(Color32::from_gray(130)),
                         );
                     } else {
-                        egui::ScrollArea::vertical()
-                            .max_height(150.0)
-                            .show(ui, |ui| {
+                        // 账号一般几个就够，不用 ScrollArea（避免和版本列表抢滚轮事件）
                         let snapshot = self.accounts.clone();
                         for a in &snapshot {
                             let active = a.uuid == self.active_uuid;
                             let color = match a.kind {
-                                AccountKind::Microsoft => {
-                                    Color32::from_rgb(158, 206, 106)
-                                }
-                                AccountKind::ThirdParty => {
-                                    Color32::from_rgb(125, 207, 255)
-                                }
-                                AccountKind::Offline => {
-                                    Color32::from_rgb(200, 200, 200)
-                                }
+                                AccountKind::Microsoft => Color32::from_rgb(158, 206, 106),
+                                AccountKind::ThirdParty => Color32::from_rgb(125, 207, 255),
+                                AccountKind::Offline => Color32::from_rgb(200, 200, 200),
                             };
                             let uuid = a.uuid.clone();
                             let label = format!("{} （{}）", a.name, a.kind_label());
@@ -1781,7 +1773,6 @@ impl GuiApp {
                                 );
                             });
                         }
-                            });
                     }
 
                     ui.add_space(6.0);
