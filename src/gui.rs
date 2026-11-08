@@ -1613,7 +1613,7 @@ impl GuiApp {
 
                     ScrollArea::vertical()
                         .auto_shrink([false, false])
-                        .min_scrolled_height(360.0)
+                        .max_height(ui.available_height() - 130.0)
                         .show(ui, |ui| {
                             // —— 已安装分组 ——
                             if !installed_idx.is_empty() {
@@ -3350,8 +3350,10 @@ impl GuiApp {
             );
             ui.add_space(8.0);
 
-            // 消息列表
+            // 消息列表：占满剩余空间，给输入框留 70px
             ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .max_height(ui.available_height() - 70.0)
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
                     for line in &self.chat_lines {
