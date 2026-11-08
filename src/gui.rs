@@ -69,6 +69,9 @@ fn apply_theme(ctx: &Context) {
         style.spacing.slider_width = 180.0;
         style.spacing.window_margin = Margin::same(12);
         style.spacing.menu_margin = Margin::same(8);
+        // 加宽滚动条，低配机/小屏幕更容易点
+        style.spacing.scroll.bar_width = 12.0;
+        style.spacing.scroll.handle_min_length = 50.0;
 
         // ---- 视觉 ----
         let v = &mut style.visuals;
