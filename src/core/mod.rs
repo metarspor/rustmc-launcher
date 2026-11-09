@@ -2,13 +2,14 @@
 
 pub mod auth;
 pub mod config;
+pub mod content;
+pub mod curseforge;
 pub mod download;
 pub mod installer;
 pub mod java;
 pub mod launch;
 pub mod manifest;
 pub mod modloaders;
-pub mod content;
 pub mod paths;
 pub mod rules;
 pub mod ai;

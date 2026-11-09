@@ -2045,34 +2045,73 @@ impl GuiApp {
         let tx = self.tx.clone();
         let client = self.client.clone();
         let ctx = ctx.clone();
+        let cf_key = self.config.curseforge_api_key.clone();
         self.content_page.offset = 0;
         self.content_page.searching = true;
         ctx.request_repaint();
         self._rt.spawn(async move {
             let mc_f = uses_mc_filter(kind).then_some(mc).flatten();
             let loader_f = uses_loader(kind).then_some(loader).flatten();
-            // 20 秒超时，避免网络差时一直卡住
-            let fut = content::search(
+
+            // 并发搜 Modrinth
+            let mr_fut = content::search(
                 &client,
                 &query,
                 kind,
                 mc_f.as_deref(),
                 loader_f.as_deref(),
                 0,
-                30,
+                20,
             );
-            match tokio::time::timeout(std::time::Duration::from_secs(20), fut).await {
-                Ok(Ok(r)) => {
-                    let _ = tx.send(GuiEvent::SearchResults(r));
-                }
+
+            // 如果配了 CurseForge key，并发搜 CurseForge
+            let cf_fut = if cf_key.trim().is_empty() {
+                None
+            } else {
+                let c = client.clone();
+                let k = cf_key.clone();
+                let q = query.clone();
+                let mc2 = mc_f.clone();
+                Some(tokio::spawn(async move {
+                    rustmc_launcher::core::curseforge::search(&c, &k, &q, kind, mc2.as_deref(), 20).await
+                }))
+            };
+
+            let mr_result = tokio::time::timeout(std::time::Duration::from_secs(20), mr_fut).await;
+
+            // 收集结果
+            let mut all_hits: Vec<SearchHit> = Vec::new();
+            let mut got_error = false;
+
+            match mr_result {
+                Ok(Ok(r)) => all_hits.extend(r.hits),
                 Ok(Err(e)) => {
-                    let _ = tx.send(GuiEvent::ActionError(format!("搜索失败：{e:#}")));
+                    let _ = tx.send(GuiEvent::ActionError(format!("Modrinth 搜索失败：{e:#}")));
+                    got_error = true;
                 }
                 Err(_) => {
                     let _ = tx.send(GuiEvent::ActionError(
-                        "搜索超时（20秒）——无法连接 Modrinth，请检查网络".to_string(),
+                        "Modrinth 搜索超时（20秒）".to_string(),
                     ));
+                    got_error = true;
                 }
+            }
+
+            if let Some(h) = cf_fut {
+                if let Ok(Ok(hits)) = h.await {
+                    all_hits.extend(hits);
+                }
+                // CurseForge 失败静默，不打扰用户
+            }
+
+            if !got_error {
+                let total = all_hits.len() as u32;
+                let _ = tx.send(GuiEvent::SearchResults(rustmc_launcher::core::content::SearchResponse {
+                    hits: all_hits,
+                    offset: 0,
+                    limit: total,
+                    total_hits: total,
+                }));
             }
             ctx.request_repaint();
         });
@@ -2799,6 +2838,25 @@ impl GuiApp {
                     ui.label("模型名:");
                     ui.text_edit_singleline(&mut self.config.ai_model)
                         .on_hover_text("例如 deepseek-chat、doubao-pro-32k、gpt-4o-mini");
+                });
+            });
+
+            // ---------------- CurseForge 配置 ----------------
+            ui.add_space(8.0);
+            ui.group(|ui| {
+                ui.label(RichText::new("🌐 CurseForge 额外搜索").strong().size(15.0));
+                ui.label(
+                    RichText::new("填入 API Key 后，内容页搜索会同时搜 Modrinth 和 CurseForge。\n申请地址：https://console.curseforge.com/ （免费注册后建个 API Key 即可）")
+                        .color(Color32::from_gray(140)).small(),
+                );
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.label("API Key:");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.config.curseforge_api_key)
+                            .password(true),
+                    )
+                    .on_hover_text("在 console.curseforge.com 创建 API Key，填这里留空则只搜 Modrinth");
                 });
             });
 

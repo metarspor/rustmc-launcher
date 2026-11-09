@@ -73,6 +73,9 @@ pub struct LauncherConfig {
     /// 低配机优化：开启后自动压低内存、附加 GC 调优参数、锁 30 帧。
     #[serde(default)]
     pub low_spec_mode: bool,
+    /// CurseForge API Key（在 https://console.curseforge.com/ 申请），填了之后内容搜索会同时搜 CurseForge。
+    #[serde(default)]
+    pub curseforge_api_key: String,
 }
 
 fn default_ai_base() -> String {
@@ -118,6 +121,7 @@ impl Default for LauncherConfig {
             ai_api_key: String::new(),
             ai_model: default_ai_model(),
             low_spec_mode: false,
+            curseforge_api_key: String::new(),
         }
     }
 }
