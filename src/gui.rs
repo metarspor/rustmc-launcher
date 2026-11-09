@@ -2257,8 +2257,9 @@ impl GuiApp {
     }
 }
 
-fn uses_mc_filter(kind: ContentKind) -> bool {
-    matches!(kind, ContentKind::Mod | ContentKind::World | ContentKind::Modpack)
+fn uses_mc_filter(_kind: ContentKind) -> bool {
+    // 所有内容类型都不加 MC 版本过滤，避免版本号不匹配导致空结果
+    false
 }
 fn uses_loader(kind: ContentKind) -> bool {
     matches!(kind, ContentKind::Mod | ContentKind::Modpack)
