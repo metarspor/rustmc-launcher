@@ -2844,9 +2844,9 @@ impl GuiApp {
             // ---------------- CurseForge 配置 ----------------
             ui.add_space(8.0);
             ui.group(|ui| {
-                ui.label(RichText::new("🌐 CurseForge 额外搜索").strong().size(15.0));
+                ui.label(RichText::new("🌐 CurseForge（暂不可用）").strong().size(15.0));
                 ui.label(
-                    RichText::new("填入 API Key 后，内容页搜索会同时搜 Modrinth 和 CurseForge。\n申请地址：https://console.curseforge.com/ （免费注册后建个 API Key 即可）")
+                    RichText::new("CurseForge API 现已仅对公司/工作室开放，个人无法申请 Key。\n当前内容搜索使用 Modrinth（https://modrinth.com），已覆盖绝大多数主流模组。\n如需 CurseForge 上的模组，请手动下载 .jar 文件后拖到启动器窗口导入。")
                         .color(Color32::from_gray(140)).small(),
                 );
                 ui.add_space(4.0);
@@ -2856,7 +2856,7 @@ impl GuiApp {
                         egui::TextEdit::singleline(&mut self.config.curseforge_api_key)
                             .password(true),
                     )
-                    .on_hover_text("在 console.curseforge.com 创建 API Key，填这里留空则只搜 Modrinth");
+                    .on_hover_text("CurseForge 个人已无法申请 API Key，留空即可");
                 });
             });
 
