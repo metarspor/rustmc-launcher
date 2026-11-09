@@ -2998,15 +2998,10 @@ impl GuiApp {
                         ui.label(RichText::new(format!("📁 {}", name)).strong().size(15.0));
                         ui.label(RichText::new(*desc).color(Color32::from_gray(140)).small());
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if exists {
-                                if ui.button("打开").clicked() {
-                                    open_folder(&dir);
-                                }
-                            } else {
-                                ui.label(
-                                    RichText::new("（不存在，启动游戏后自动创建）")
-                                        .color(Color32::from_gray(110)).small(),
-                                );
+                            if ui.button("打开").clicked() {
+                                // 不存在就自动创建
+                                let _ = std::fs::create_dir_all(&dir);
+                                open_folder(&dir);
                             }
                         });
                         if exists {
