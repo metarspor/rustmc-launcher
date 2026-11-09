@@ -2719,50 +2719,35 @@ impl GuiApp {
                     }
                 }
                 ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    if ui.button("📥 自动下载 Java 17（推荐）").clicked() && !self.busy {
-                        self.busy = true;
-                        self.status = "正在下载 Temurin JRE 17…".to_string();
-                        let client = self.client.clone();
-                        let base = self.config.resolved_game_dir();
-                        let tx = self.tx.clone();
-                        self._rt.spawn(async move {
-                            match java::download_jre(&client, &base, 17).await {
-                                Ok(p) => {
-                                    let _ = tx.send(GuiEvent::ActionDone(format!(
-                                        "Java 17 已下载到：{}",
-                                        p.display()
-                                    )));
+                ui.horizontal_wrapped(|ui| {
+                    for (ver, label) in [
+                        (8u32, "Java 8（MC 1.16 及以下旧版）"),
+                        (17u32, "Java 17（MC 1.17-1.20.4 推荐）"),
+                        (21u32, "Java 21（MC 1.21+ 新版本）"),
+                    ] {
+                        if ui.button(format!("📥 下载 {}", label)).clicked() && !self.busy {
+                            self.busy = true;
+                            self.status = format!("正在下载 Temurin JRE {}…", ver);
+                            let client = self.client.clone();
+                            let base = self.config.resolved_game_dir();
+                            let tx = self.tx.clone();
+                            self._rt.spawn(async move {
+                                match java::download_jre(&client, &base, ver).await {
+                                    Ok(p) => {
+                                        let _ = tx.send(GuiEvent::ActionDone(format!(
+                                            "Java {} 已下载到：{}",
+                                            ver,
+                                            p.display()
+                                        )));
+                                    }
+                                    Err(e) => {
+                                        let _ = tx.send(GuiEvent::ActionError(format!(
+                                            "下载 Java 失败：{e:#}"
+                                        )));
+                                    }
                                 }
-                                Err(e) => {
-                                    let _ = tx.send(GuiEvent::ActionError(format!(
-                                        "下载 Java 失败：{e:#}"
-                                    )));
-                                }
-                            }
-                        });
-                    }
-                    if ui.button("📥 自动下载 Java 21（新版本）").clicked() && !self.busy {
-                        self.busy = true;
-                        self.status = "正在下载 Temurin JRE 21…".to_string();
-                        let client = self.client.clone();
-                        let base = self.config.resolved_game_dir();
-                        let tx = self.tx.clone();
-                        self._rt.spawn(async move {
-                            match java::download_jre(&client, &base, 21).await {
-                                Ok(p) => {
-                                    let _ = tx.send(GuiEvent::ActionDone(format!(
-                                        "Java 21 已下载到：{}",
-                                        p.display()
-                                    )));
-                                }
-                                Err(e) => {
-                                    let _ = tx.send(GuiEvent::ActionError(format!(
-                                        "下载 Java 失败：{e:#}"
-                                    )));
-                                }
-                            }
-                        });
+                            });
+                        }
                     }
                 });
                 ui.label(
