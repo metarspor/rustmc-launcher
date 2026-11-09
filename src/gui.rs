@@ -2045,7 +2045,6 @@ impl GuiApp {
         let tx = self.tx.clone();
         let client = self.client.clone();
         let ctx = ctx.clone();
-        let cf_key = self.config.curseforge_api_key.clone();
         self.content_page.offset = 0;
         self.content_page.searching = true;
         ctx.request_repaint();
@@ -2064,16 +2063,13 @@ impl GuiApp {
                 20,
             );
 
-            // 如果配了 CurseForge key，并发搜 CurseForge
-            let cf_fut = if cf_key.trim().is_empty() {
-                None
-            } else {
+            // 如果 CurseForge 镜像可用，并发搜（不需要 key）
+            let cf_fut = {
                 let c = client.clone();
-                let k = cf_key.clone();
                 let q = query.clone();
                 let mc2 = mc_f.clone();
                 Some(tokio::spawn(async move {
-                    rustmc_launcher::core::curseforge::search(&c, &k, &q, kind, mc2.as_deref(), 20).await
+                    rustmc_launcher::core::curseforge::search(&c, "", &q, kind, mc2.as_deref(), 15).await
                 }))
             };
 
@@ -2098,7 +2094,8 @@ impl GuiApp {
             }
 
             if let Some(h) = cf_fut {
-                if let Ok(Ok(hits)) = h.await {
+                // CurseForge 最多等 15 秒，慢了就放弃
+                if let Ok(Ok(Ok(hits))) = tokio::time::timeout(std::time::Duration::from_secs(15), h).await {
                     all_hits.extend(hits);
                 }
                 // CurseForge 失败静默，不打扰用户
@@ -2841,23 +2838,14 @@ impl GuiApp {
                 });
             });
 
-            // ---------------- CurseForge 配置 ----------------
+            // ---------------- 内容源说明 ----------------
             ui.add_space(8.0);
             ui.group(|ui| {
-                ui.label(RichText::new("🌐 CurseForge（暂不可用）").strong().size(15.0));
+                ui.label(RichText::new("🌐 内容源").strong().size(15.0));
                 ui.label(
-                    RichText::new("CurseForge API 现已仅对公司/工作室开放，个人无法申请 Key。\n当前内容搜索使用 Modrinth（https://modrinth.com），已覆盖绝大多数主流模组。\n如需 CurseForge 上的模组，请手动下载 .jar 文件后拖到启动器窗口导入。")
+                    RichText::new("内容搜索通过国内开源镜像 mod.mcimirror.top 同时查询 Modrinth 和 CurseForge，\n无需 API Key，国内直连快速。")
                         .color(Color32::from_gray(140)).small(),
                 );
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    ui.label("API Key:");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.config.curseforge_api_key)
-                            .password(true),
-                    )
-                    .on_hover_text("CurseForge 个人已无法申请 API Key，留空即可");
-                });
             });
 
             ui.add_space(12.0);

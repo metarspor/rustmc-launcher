@@ -1,14 +1,14 @@
 //! CurseForge API 搜索与下载。
 //!
-//! 需要用户在设置里填入 CurseForge API Key（https://console.curseforge.com/）。
-//! 搜索结果复用 content::SearchHit 结构，project_id 前缀加 "cf:" 以区分来源。
+//! 使用国内开源镜像 mod.mcimirror.top（https://github.com/mcmod-info-mirror/mcim-rust-api），
+//! 无需 API Key，国内访问快速。
 
 use anyhow::Result;
 use serde::Deserialize;
 
 use crate::core::content::{ContentKind, SearchHit};
 
-const BASE: &str = "https://api.curseforge.com";
+const BASE: &str = "https://mod.mcimirror.top/curseforge";
 
 /// CurseForge 分类 ID（gameId=432 = Minecraft）。
 fn class_id(kind: ContentKind) -> u32 {
@@ -46,10 +46,10 @@ struct CfLogo {
     url: String,
 }
 
-/// 搜索 CurseForge，结果转成通用 SearchHit。
+/// 搜索 CurseForge（通过国内镜像，无需 API Key）。
 pub async fn search(
     client: &reqwest::Client,
-    api_key: &str,
+    _api_key: &str,
     query: &str,
     kind: ContentKind,
     mc_version: Option<&str>,
@@ -57,7 +57,7 @@ pub async fn search(
 ) -> Result<Vec<SearchHit>> {
     let mut req = client
         .get(format!("{BASE}/v1/mods/search"))
-        .header("x-api-key", api_key)
+        .header("User-Agent", "RustMC-Launcher/0.1")
         .query(&[
             ("gameId", "432".to_string()),
             ("classId", class_id(kind).to_string()),
@@ -76,7 +76,6 @@ pub async fn search(
         .data
         .into_iter()
         .map(|m| SearchHit {
-            // 用 cf: 前缀区分 CurseForge 项目
             project_id: format!("cf:{}", m.id),
             slug: None,
             title: m.name,

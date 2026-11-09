@@ -143,7 +143,7 @@ pub async fn search(
     let resp: SearchResponse = crate::core::modloaders::fetch_json_retry(
         || {
             client
-                .get("https://api.modrinth.com/v2/search")
+                .get("https://mod.mcimirror.top/modrinth/v2/search")
                 .query(&[
                     ("query", query.to_string()),
                     ("facets", facets_str.clone()),
@@ -181,7 +181,7 @@ pub async fn project_versions(
         || {
             let mut req = client
                 .get(format!(
-                    "https://api.modrinth.com/v2/project/{project_id}/version"
+                    "https://mod.mcimirror.top/modrinth/v2/project/{project_id}/version"
                 ))
                 .header("User-Agent", "RustMC-Launcher/0.1");
             if !gv.is_empty() {
