@@ -2064,7 +2064,7 @@ impl GuiApp {
                 let fut = rustmc_launcher::core::curseforge::search(
                     &client, "", &query, kind, mc_f.as_deref(), 30,
                 );
-                match tokio::time::timeout(std::time::Duration::from_secs(20), fut).await {
+                match tokio::time::timeout(std::time::Duration::from_secs(30), fut).await {
                     Ok(Ok(hits)) => {
                         let total = hits.len() as u32;
                         let _ = tx.send(GuiEvent::SearchResults(rustmc_launcher::core::content::SearchResponse {
@@ -2075,7 +2075,7 @@ impl GuiApp {
                         let _ = tx.send(GuiEvent::ActionError(format!("CurseForge 搜索失败：{e:#}")));
                     }
                     Err(_) => {
-                        let _ = tx.send(GuiEvent::ActionError("CurseForge 搜索超时（20秒）".to_string()));
+                        let _ = tx.send(GuiEvent::ActionError("CurseForge 搜索超时（30秒）——镜像较慢，建议切到 Modrinth".to_string()));
                     }
                 }
             } else {
