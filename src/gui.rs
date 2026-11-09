@@ -179,6 +179,7 @@ enum Overlay {
     None,
     DeviceLogin,
     Notice,
+    AccountManager,
 }
 
 #[derive(Default, Clone)]
@@ -1439,6 +1440,7 @@ impl eframe::App for GuiApp {
         egui::CentralPanel::default().show(root, |ui| match self.overlay {
             Overlay::DeviceLogin => self.ui_device_login(ui),
             Overlay::Notice => self.ui_notice(ui),
+            Overlay::AccountManager => self.ui_account_manager(ui),
             Overlay::None => match self.tab {
                 Tab::Play => self.ui_play(ui),
                 Tab::Loaders => self.ui_loaders(ui),
@@ -1716,139 +1718,45 @@ impl GuiApp {
                 });
             });
 
-            // 右侧：账号 + 版本详情
+            // 右侧：当前账号 + 版本详情
             ui.vertical(|ui| {
                 ui.add_space(4.0);
+                // —— 当前账号卡片（简洁，只显示玩家ID）——
                 ui.group(|ui| {
                     ui.add_space(4.0);
-                    ui.label(
-                        RichText::new("账号管理")
-                            .strong()
-                            .size(16.0)
-                            .color(theme::ACCENT),
-                    );
-                    ui.add_space(4.0);
-
-                    // —— 已保存账号列表（永久保留在本地，点击切换，可删除）——
-                    if self.accounts.is_empty() {
-                        ui.label(
-                            RichText::new("暂无保存的账号，请在下方添加。")
-                                .color(Color32::from_gray(130)),
-                        );
-                    } else {
-                        // 账号一般几个就够，不用 ScrollArea（避免和版本列表抢滚轮事件）
-                        let snapshot = self.accounts.clone();
-                        for a in &snapshot {
-                            let active = a.uuid == self.active_uuid;
-                            let color = match a.kind {
-                                AccountKind::Microsoft => Color32::from_rgb(158, 206, 106),
-                                AccountKind::ThirdParty => Color32::from_rgb(125, 207, 255),
-                                AccountKind::Offline => Color32::from_rgb(200, 200, 200),
-                            };
-                            let uuid = a.uuid.clone();
-                            let label = format!("{} （{}）", a.name, a.kind_label());
-                            let note = a.note.clone();
-                            ui.horizontal(|ui| {
-                                let resp = ui.selectable_label(
-                                    active,
-                                    RichText::new(label.clone()).color(color),
-                                );
-                                if resp.clicked() {
-                                    self.switch_account(&uuid);
-                                }
-                                if !note.is_empty() {
-                                    ui.label(
-                                        RichText::new(&note)
-                                            .color(Color32::from_gray(120))
-                                            .small(),
-                                    );
-                                }
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        if ui.button("删除").clicked() {
-                                            self.remove_account(&uuid);
-                                        }
-                                    },
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("当前账号").strong().size(14.0).color(theme::ACCENT));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("⚙ 账号管理").clicked() {
+                                self.overlay = Overlay::AccountManager;
+                            }
+                        });
+                    });
+                    ui.add_space(6.0);
+                    if let Some(acc) = &self.account {
+                        let color = match acc.kind {
+                            AccountKind::Microsoft => Color32::from_rgb(158, 206, 106),
+                            AccountKind::ThirdParty => Color32::from_rgb(125, 207, 255),
+                            AccountKind::Offline => Color32::from_rgb(200, 200, 200),
+                        };
+                        ui.horizontal(|ui| {
+                            // 头像占位（用首字母圆形色块）
+                            let letter = acc.name.chars().next().unwrap_or('?').to_uppercase().to_string();
+                            ui.colored_label(color, RichText::new(format!("  {}  ", letter)).strong().size(18.0));
+                            ui.vertical(|ui| {
+                                ui.label(RichText::new(&acc.name).strong().size(16.0));
+                                ui.label(
+                                    RichText::new(acc.kind_label())
+                                        .color(Color32::from_gray(140)).small(),
                                 );
                             });
-                        }
+                        });
+                    } else {
+                        ui.label(
+                            RichText::new("未登录 — 点右上角「账号管理」添加账号")
+                                .color(Color32::from_gray(130)),
+                        );
                     }
-
-                    ui.add_space(6.0);
-                    ui.separator();
-                    ui.add_space(4.0);
-
-                    // —— 添加离线账号 ——
-                    ui.horizontal(|ui| {
-                        ui.label("离线:");
-                        ui.add_sized(
-                            [150.0, 22.0],
-                            egui::TextEdit::singleline(&mut self.offline_name)
-                                .hint_text("玩家名，如 Steve"),
-                        );
-                        if ui.button("添加离线账号").clicked() {
-                            let name = if self.offline_name.trim().is_empty() {
-                                "Player".to_string()
-                            } else {
-                                self.offline_name.trim().to_string()
-                            };
-                            self.upsert_account(Account::offline(&name));
-                            self.offline_name.clear();
-                        }
-                    });
-
-                    // —— 添加第三方账号 ——
-                    ui.horizontal(|ui| {
-                        ui.label("第三方:");
-                        ui.add_sized(
-                            [110.0, 22.0],
-                            egui::TextEdit::singleline(&mut self.add_name)
-                                .hint_text("玩家名（必填）"),
-                        );
-                        ui.add_sized(
-                            [110.0, 22.0],
-                            egui::TextEdit::singleline(&mut self.add_uuid)
-                                .hint_text("UUID（可选）"),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("令牌/备注:");
-                        ui.add_sized(
-                            [110.0, 22.0],
-                            egui::TextEdit::singleline(&mut self.add_token)
-                                .hint_text("令牌（可选）"),
-                        );
-                        ui.add_sized(
-                            [110.0, 22.0],
-                            egui::TextEdit::singleline(&mut self.add_note)
-                                .hint_text("备注（可选）"),
-                        );
-                        let enabled = !self.add_name.trim().is_empty();
-                        if ui
-                            .add_enabled(enabled, egui::Button::new("添加第三方"))
-                            .clicked()
-                        {
-                            let acc = Account::third_party(
-                                &self.add_name,
-                                &self.add_uuid,
-                                &self.add_token,
-                                &self.add_note,
-                            );
-                            self.upsert_account(acc);
-                            self.add_name.clear();
-                            self.add_uuid.clear();
-                            self.add_token.clear();
-                            self.add_note.clear();
-                        }
-                    });
-
-                    // —— 微软正版设备码登录 ——
-                    ui.horizontal(|ui| {
-                        if ui.button("微软账号登录（设备码）").clicked() {
-                            self.start_microsoft(ui.ctx());
-                        }
-                    });
                     ui.add_space(4.0);
                 });
 
@@ -2936,6 +2844,151 @@ impl GuiApp {
         if ui.button("确定").clicked() {
             self.overlay = Overlay::None;
         }
+    }
+
+    /// 账号管理弹窗：切换/删除已有账号，添加离线/第三方/微软账号。
+    fn ui_account_manager(&mut self, ui: &mut egui::Ui) {
+        ui.vertical_centered(|ui| {
+            ui.add_space(10.0);
+            ui.heading("账号管理");
+            ui.add_space(8.0);
+        });
+
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .max_height(ui.available_height() - 80.0)
+            .show(ui, |ui| {
+                ui.group(|ui| {
+                    ui.add_space(4.0);
+                    ui.label(RichText::new("已保存的账号").strong().size(14.0).color(theme::ACCENT));
+                    ui.add_space(4.0);
+
+                    if self.accounts.is_empty() {
+                        ui.label(
+                            RichText::new("暂无保存的账号，请在下方添加。")
+                                .color(Color32::from_gray(130)),
+                        );
+                    } else {
+                        let snapshot = self.accounts.clone();
+                        for a in &snapshot {
+                            let active = a.uuid == self.active_uuid;
+                            let color = match a.kind {
+                                AccountKind::Microsoft => Color32::from_rgb(158, 206, 106),
+                                AccountKind::ThirdParty => Color32::from_rgb(125, 207, 255),
+                                AccountKind::Offline => Color32::from_rgb(200, 200, 200),
+                            };
+                            let uuid = a.uuid.clone();
+                            let label = format!("{} （{}）", a.name, a.kind_label());
+                            let note = a.note.clone();
+                            ui.horizontal(|ui| {
+                                let resp = ui.selectable_label(
+                                    active,
+                                    RichText::new(label.clone()).color(color),
+                                );
+                                if resp.clicked() {
+                                    self.switch_account(&uuid);
+                                }
+                                if !note.is_empty() {
+                                    ui.label(
+                                        RichText::new(&note)
+                                            .color(Color32::from_gray(120))
+                                            .small(),
+                                    );
+                                }
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        if ui.button("删除").clicked() {
+                                            self.remove_account(&uuid);
+                                        }
+                                    },
+                                );
+                            });
+                        }
+                    }
+
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.add_space(6.0);
+
+                    // 离线账号
+                    ui.label(RichText::new("添加离线账号").strong().size(13.0));
+                    ui.horizontal(|ui| {
+                        ui.add_sized(
+                            [180.0, 22.0],
+                            egui::TextEdit::singleline(&mut self.offline_name)
+                                .hint_text("玩家名，如 Steve"),
+                        );
+                        if ui.button("添加").clicked() {
+                            let name = if self.offline_name.trim().is_empty() {
+                                "Player".to_string()
+                            } else {
+                                self.offline_name.trim().to_string()
+                            };
+                            self.upsert_account(Account::offline(&name));
+                            self.offline_name.clear();
+                        }
+                    });
+
+                    ui.add_space(6.0);
+                    // 第三方账号
+                    ui.label(RichText::new("添加第三方账号").strong().size(13.0));
+                    ui.horizontal(|ui| {
+                        ui.add_sized(
+                            [130.0, 22.0],
+                            egui::TextEdit::singleline(&mut self.add_name)
+                                .hint_text("玩家名（必填）"),
+                        );
+                        ui.add_sized(
+                            [130.0, 22.0],
+                            egui::TextEdit::singleline(&mut self.add_uuid)
+                                .hint_text("UUID（可选）"),
+                        );
+                    });
+                    ui.horizontal(|ui| {
+                        ui.add_sized(
+                            [130.0, 22.0],
+                            egui::TextEdit::singleline(&mut self.add_token)
+                                .hint_text("令牌（可选）"),
+                        );
+                        ui.add_sized(
+                            [130.0, 22.0],
+                            egui::TextEdit::singleline(&mut self.add_note)
+                                .hint_text("备注（可选）"),
+                        );
+                        let enabled = !self.add_name.trim().is_empty();
+                        if ui.add_enabled(enabled, egui::Button::new("添加第三方")).clicked() {
+                            let acc = Account::third_party(
+                                &self.add_name,
+                                &self.add_uuid,
+                                &self.add_token,
+                                &self.add_note,
+                            );
+                            self.upsert_account(acc);
+                            self.add_name.clear();
+                            self.add_uuid.clear();
+                            self.add_token.clear();
+                            self.add_note.clear();
+                        }
+                    });
+
+                    ui.add_space(6.0);
+                    // 微软登录
+                    if ui.button("微软账号登录（设备码）").clicked() {
+                        self.start_microsoft(ui.ctx());
+                    }
+                    ui.add_space(4.0);
+                });
+            });
+
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("关闭").clicked() {
+                    self.overlay = Overlay::None;
+                }
+            });
+        });
     }
 }
 
