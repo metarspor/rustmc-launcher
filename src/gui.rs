@@ -1093,6 +1093,8 @@ impl GuiApp {
                 }
             },
         }
+        // 异步事件到达后强制重绘，否则搜索/版本结果回来时画面不刷新
+        ctx.request_repaint();
     }
 
     fn handle_download(&mut self, e: DownloadEvent) {
