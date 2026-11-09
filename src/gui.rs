@@ -154,6 +154,7 @@ enum Tab {
     Content,
     Ai,
     Settings,
+    Instance,
 }
 
 /// 聊天界面里的一行显示。
@@ -1493,6 +1494,7 @@ impl eframe::App for GuiApp {
                 Tab::Content => self.ui_content(ui),
                 Tab::Ai => self.ui_ai(ui),
                 Tab::Settings => self.ui_settings(ui),
+                Tab::Instance => self.ui_instance(ui),
             },
         });
 
@@ -1556,6 +1558,7 @@ impl GuiApp {
                 (Tab::Content, "📦 内容"),
                 (Tab::Ai, "🤖 AI 助手"),
                 (Tab::Settings, "⚙ 设置"),
+                (Tab::Instance, "🗂 实例"),
             ];
             for (t, label) in tabs {
                 let selected = self.tab == t;
@@ -2950,6 +2953,81 @@ impl GuiApp {
         }
     }
 
+    /// 实例管理：查看当前版本游戏目录，打开 mods/saves/config 等文件夹。
+    fn ui_instance(&mut self, ui: &mut egui::Ui) {
+        let game_dir = self.active_game_dir();
+        ui.vertical(|ui| {
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("🗂 实例管理").strong().size(20.0).color(theme::ACCENT));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("📂 打开游戏文件夹").clicked() {
+                        open_folder(&game_dir);
+                    }
+                });
+            });
+            ui.label(
+                RichText::new(format!("当前实例：{}", game_dir.display()))
+                    .color(Color32::from_gray(140)).small(),
+            );
+            ui.add_space(10.0);
+
+            // 列出关键子文件夹，每个都可以打开
+            let folders = [
+                ("mods", "模组文件夹 (.jar)"),
+                ("saves", "存档文件夹"),
+                ("resourcepacks", "资源包"),
+                ("shaderpacks", "光影包"),
+                ("config", "模组配置"),
+                ("schematics", "投影文件"),
+                ("kubejs", "KubeJS 脚本"),
+            ];
+
+            for (name, desc) in &folders {
+                let dir = game_dir.join(name);
+                let exists = dir.exists();
+                let count = if exists {
+                    std::fs::read_dir(&dir)
+                        .map(|r| r.count())
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                ui.group(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(format!("📁 {}", name)).strong().size(15.0));
+                        ui.label(RichText::new(*desc).color(Color32::from_gray(140)).small());
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if exists {
+                                if ui.button("打开").clicked() {
+                                    open_folder(&dir);
+                                }
+                            } else {
+                                ui.label(
+                                    RichText::new("（不存在，启动游戏后自动创建）")
+                                        .color(Color32::from_gray(110)).small(),
+                                );
+                            }
+                        });
+                        if exists {
+                            ui.label(
+                                RichText::new(format!("{} 个文件/文件夹", count))
+                                    .color(Color32::from_gray(120)).small(),
+                            );
+                        }
+                    });
+                });
+                ui.add_space(4.0);
+            }
+
+            ui.add_space(8.0);
+            ui.label(
+                RichText::new("提示：把 .jar 模组文件直接拖到启动器窗口也能安装；删除文件请在系统文件管理器里操作。")
+                    .color(Color32::from_gray(130)).small(),
+            );
+        });
+    }
+
     /// 账号管理弹窗：切换/删除已有账号，添加离线/第三方/微软账号。
     fn ui_account_manager(&mut self, ui: &mut egui::Ui) {
         ui.vertical_centered(|ui| {
@@ -3584,5 +3662,21 @@ impl GuiApp {
                 }
             });
         });
+    }
+}
+
+/// 跨平台用系统文件管理器打开文件夹。
+fn open_folder(path: &std::path::Path) {
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(path).spawn();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("explorer").arg(path).spawn();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg(path).spawn();
     }
 }
