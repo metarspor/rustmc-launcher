@@ -1365,6 +1365,42 @@ fn local_version_type_at(json_path: &std::path::Path) -> String {
         .unwrap_or_else(|| "custom".to_string())
 }
 
+/// 从版本 id 提取纯 MC 版本号。
+///
+/// - `1.20.1` → `1.20.1`
+/// - `fabric-loader-0.16.5-1.20.1` → `1.20.1`
+/// - `quilt-loader-0.26.0-1.21.4` → `1.21.4`
+/// - `1.20.1-forge-47.2.0` → `1.20.1`
+/// - `1.21-neoforge-21.1.0` → `1.21`
+/// - `optifine-1.20.1_HD_U_I9` → `1.20.1`
+fn extract_mc_version(id: &str) -> String {
+    let l = id.to_lowercase();
+    // Fabric / Quilt: fabric-loader-<ver>-<mc>
+    for prefix in ["fabric-loader-", "quilt-loader-"] {
+        if let Some(rest) = l.strip_prefix(prefix) {
+            // rest 形如 "0.16.5-1.20.1"，取最后一个 - 后面的
+            if let Some(idx) = rest.rfind('-') {
+                return rest[idx + 1..].to_string();
+            }
+        }
+    }
+    // Forge / NeoForge: <mc>-forge-<ver> 或 <mc>-neoforge-<ver>
+    for suffix in ["-forge-", "-forge", "-neoforge-"] {
+        if let Some(idx) = l.find(suffix) {
+            return id[..idx].to_string();
+        }
+    }
+    // OptiFine: optifine-<mc>_HD_...
+    if let Some(rest) = l.strip_prefix("optifine-") {
+        // rest 形如 "1.20.1_hd_u_i9"，取下划线前的
+        if let Some(idx) = rest.find('_') {
+            return rest[..idx].to_string();
+        }
+    }
+    // 普通版本号直接返回
+    id.to_string()
+}
+
 /* ----------------------------- eframe App ----------------------------- */
 
 impl eframe::App for GuiApp {
@@ -2126,10 +2162,11 @@ impl GuiApp {
         if let Some(idx) = self.selected
             && let Some(v) = self.shown.get(idx)
         {
-            // 只有官方版本才用作 MC 过滤
-            if v.version_type != "custom" {
-                return Some(v.id.clone());
-            }
+            // 从加载器版本 id 里提取纯 MC 版本号
+            // fabric-loader-0.16.5-1.20.1 → 1.20.1
+            // 1.20.1-forge-47.2.0 → 1.20.1
+            let mc = extract_mc_version(&v.id);
+            return Some(mc);
         }
         self.manifest.as_ref().map(|m| m.latest.release.clone())
     }
