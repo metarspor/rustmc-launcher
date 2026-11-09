@@ -229,6 +229,8 @@ struct ContentPage {
     kind: ContentKind,
     /// 模组/整合包的加载器过滤（fabric / quilt / forge / neoforge）
     loader: String,
+    /// 搜索来源："modrinth" 或 "curseforge"
+    source: String,
     query: String,
     results: Vec<SearchHit>,
     total: u32,
@@ -249,6 +251,7 @@ impl Default for ContentPage {
         ContentPage {
             kind: ContentKind::Mod,
             loader: "fabric".to_string(),
+            source: "modrinth".to_string(),
             query: String::new(),
             results: Vec::new(),
             total: 0,
@@ -2042,6 +2045,7 @@ impl GuiApp {
         let query = self.content_page.query.clone();
         let mc = self.content_mc_filter();
         let loader = self.content_loader_filter();
+        let source = self.content_page.source.clone();
         let tx = self.tx.clone();
         let client = self.client.clone();
         let ctx = ctx.clone();
@@ -2052,63 +2056,41 @@ impl GuiApp {
             let mc_f = uses_mc_filter(kind).then_some(mc).flatten();
             let loader_f = uses_loader(kind).then_some(loader).flatten();
 
-            // 并发搜 Modrinth
-            let mr_fut = content::search(
-                &client,
-                &query,
-                kind,
-                mc_f.as_deref(),
-                loader_f.as_deref(),
-                0,
-                20,
-            );
-
-            // 如果 CurseForge 镜像可用，并发搜（不需要 key）
-            let cf_fut = {
-                let c = client.clone();
-                let q = query.clone();
-                let mc2 = mc_f.clone();
-                Some(tokio::spawn(async move {
-                    rustmc_launcher::core::curseforge::search(&c, "", &q, kind, mc2.as_deref(), 15).await
-                }))
-            };
-
-            let mr_result = tokio::time::timeout(std::time::Duration::from_secs(20), mr_fut).await;
-
-            // 收集结果
-            let mut all_hits: Vec<SearchHit> = Vec::new();
-            let mut got_error = false;
-
-            match mr_result {
-                Ok(Ok(r)) => all_hits.extend(r.hits),
-                Ok(Err(e)) => {
-                    let _ = tx.send(GuiEvent::ActionError(format!("Modrinth 搜索失败：{e:#}")));
-                    got_error = true;
+            if source == "curseforge" {
+                // 只搜 CurseForge
+                let fut = rustmc_launcher::core::curseforge::search(
+                    &client, "", &query, kind, mc_f.as_deref(), 30,
+                );
+                match tokio::time::timeout(std::time::Duration::from_secs(20), fut).await {
+                    Ok(Ok(hits)) => {
+                        let total = hits.len() as u32;
+                        let _ = tx.send(GuiEvent::SearchResults(rustmc_launcher::core::content::SearchResponse {
+                            hits, offset: 0, limit: total, total_hits: total,
+                        }));
+                    }
+                    Ok(Err(e)) => {
+                        let _ = tx.send(GuiEvent::ActionError(format!("CurseForge 搜索失败：{e:#}")));
+                    }
+                    Err(_) => {
+                        let _ = tx.send(GuiEvent::ActionError("CurseForge 搜索超时（20秒）".to_string()));
+                    }
                 }
-                Err(_) => {
-                    let _ = tx.send(GuiEvent::ActionError(
-                        "Modrinth 搜索超时（20秒）".to_string(),
-                    ));
-                    got_error = true;
+            } else {
+                // 只搜 Modrinth
+                let fut = content::search(
+                    &client, &query, kind, mc_f.as_deref(), loader_f.as_deref(), 0, 30,
+                );
+                match tokio::time::timeout(std::time::Duration::from_secs(20), fut).await {
+                    Ok(Ok(r)) => {
+                        let _ = tx.send(GuiEvent::SearchResults(r));
+                    }
+                    Ok(Err(e)) => {
+                        let _ = tx.send(GuiEvent::ActionError(format!("Modrinth 搜索失败：{e:#}")));
+                    }
+                    Err(_) => {
+                        let _ = tx.send(GuiEvent::ActionError("Modrinth 搜索超时（20秒）".to_string()));
+                    }
                 }
-            }
-
-            if let Some(h) = cf_fut {
-                // CurseForge 最多等 15 秒，慢了就放弃
-                if let Ok(Ok(Ok(hits))) = tokio::time::timeout(std::time::Duration::from_secs(15), h).await {
-                    all_hits.extend(hits);
-                }
-                // CurseForge 失败静默，不打扰用户
-            }
-
-            if !got_error {
-                let total = all_hits.len() as u32;
-                let _ = tx.send(GuiEvent::SearchResults(rustmc_launcher::core::content::SearchResponse {
-                    hits: all_hits,
-                    offset: 0,
-                    limit: total,
-                    total_hits: total,
-                }));
             }
             ctx.request_repaint();
         });
@@ -2337,6 +2319,22 @@ impl GuiApp {
                                 }
                             });
                     }
+                    ui.label("来源:");
+                    egui::ComboBox::from_id_salt("content_source_combo")
+                        .selected_text(match self.content_page.source.as_str() {
+                            "curseforge" => "CurseForge",
+                            _ => "Modrinth",
+                        })
+                        .show_ui(ui, |ui| {
+                            if ui.selectable_label(self.content_page.source == "modrinth", "Modrinth").clicked() {
+                                self.content_page.source = "modrinth".to_string();
+                                self.content_page.auto_loaded = false;
+                            }
+                            if ui.selectable_label(self.content_page.source == "curseforge", "CurseForge").clicked() {
+                                self.content_page.source = "curseforge".to_string();
+                                self.content_page.auto_loaded = false;
+                            }
+                        });
                     ui.label("搜索:");
                     let resp = ui.add_sized(
                         [240.0, 24.0],
