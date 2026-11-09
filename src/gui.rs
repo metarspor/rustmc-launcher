@@ -240,6 +240,8 @@ struct ContentPage {
     local_path: String,
     /// 当前 kind 是否已自动搜索过（首次进入/切换类型时自动搜全部）
     auto_loaded: bool,
+    /// 是否正在搜索中（显示加载提示）
+    searching: bool,
 }
 
 impl Default for ContentPage {
@@ -257,6 +259,7 @@ impl Default for ContentPage {
             installed: Vec::new(),
             local_path: String::new(),
             auto_loaded: false,
+            searching: false,
         }
     }
 }
@@ -1062,6 +1065,7 @@ impl GuiApp {
                 self.loader_page.selected = None;
             }
             GuiEvent::SearchResults(r) => {
+                self.content_page.searching = false;
                 self.content_page.results = r.hits;
                 self.content_page.total = r.total_hits;
             }
@@ -1077,6 +1081,7 @@ impl GuiApp {
             }
             GuiEvent::ActionError(e) => {
                 self.busy = false;
+                self.content_page.searching = false;
                 self.notice = e;
                 self.overlay = Overlay::Notice;
             }
@@ -2005,10 +2010,13 @@ impl GuiApp {
         let client = self.client.clone();
         let ctx = ctx.clone();
         self.content_page.offset = 0;
+        self.content_page.searching = true;
+        ctx.request_repaint();
         self._rt.spawn(async move {
             let mc_f = uses_mc_filter(kind).then_some(mc).flatten();
             let loader_f = uses_loader(kind).then_some(loader).flatten();
-            match content::search(
+            // 20 秒超时，避免网络差时一直卡住
+            let fut = content::search(
                 &client,
                 &query,
                 kind,
@@ -2016,14 +2024,18 @@ impl GuiApp {
                 loader_f.as_deref(),
                 0,
                 30,
-            )
-            .await
-            {
-                Ok(r) => {
+            );
+            match tokio::time::timeout(std::time::Duration::from_secs(20), fut).await {
+                Ok(Ok(r)) => {
                     let _ = tx.send(GuiEvent::SearchResults(r));
                 }
-                Err(e) => {
-                    let _ = tx.send(GuiEvent::ActionError(format!("{e:#}")));
+                Ok(Err(e)) => {
+                    let _ = tx.send(GuiEvent::ActionError(format!("搜索失败：{e:#}")));
+                }
+                Err(_) => {
+                    let _ = tx.send(GuiEvent::ActionError(
+                        "搜索超时（20秒）——无法连接 Modrinth，请检查网络".to_string(),
+                    ));
                 }
             }
             ctx.request_repaint();
@@ -2277,8 +2289,16 @@ impl GuiApp {
                         ui.set_min_width(340.0);
                         ui.set_max_width(340.0);
                         ui.group(|ui| {
-                            ui.label(RichText::new("搜索结果").strong());
-                            if self.content_page.results.is_empty() {
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new("搜索结果").strong());
+                                if self.content_page.searching {
+                                    ui.label(
+                                        RichText::new("⏳ 搜索中…")
+                                            .color(Color32::from_rgb(125, 207, 255)),
+                                    );
+                                }
+                            });
+                            if self.content_page.results.is_empty() && !self.content_page.searching {
                                 ui.label(
                                     RichText::new("（暂无结果，点击搜索）")
                                         .color(Color32::from_gray(130)),
